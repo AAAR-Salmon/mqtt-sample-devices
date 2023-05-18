@@ -1,7 +1,15 @@
-use std::{f32::consts::PI, thread, time::Duration};
+use std::f32::consts::PI;
+use std::thread;
+use std::time::Duration;
+use std::time::SystemTime;
 
+use chrono::prelude::{DateTime, Utc};
 use clap::Parser;
 use rand::{self, Rng};
+use rumqttc::Client;
+use rumqttc::MqttOptions;
+use rumqttc::QoS;
+use serde::{Deserialize, Serialize};
 
 struct Thermometer<T>
 where
@@ -25,11 +33,23 @@ where
     }
 }
 
+#[derive(Serialize, Deserialize)]
+struct TemperatureRecord {
+    timestamp: String,
+    temperature: f32,
+}
+
 #[derive(Parser)]
 #[command(author, version, about)]
 struct Args {
-    #[arg(help = "broker address (like `mqtt.example.com:1883`)")]
-    broker: String,
+    #[arg(help = "broker hostname (like `mqtt.example.com`)")]
+    hostname: String,
+
+    #[arg(short, long, default_value_t = 1883)]
+    port: u16,
+
+    #[arg(short, long)]
+    topic: String,
 
     #[arg(short, long, default_value_t = 1.0)]
     send_duration: f32,
@@ -50,17 +70,43 @@ struct Args {
 fn main() {
     let args = Args::parse();
 
-    let mut thermometer = Thermometer {
-        base_temperature: args.base_temperature,
-        amplitude: args.amplitude,
-        period: args.period,
-        max_measurement_error: args.max_measurement_error,
-        rng: rand::thread_rng(),
-    };
+    let mut mqttoptions = MqttOptions::new("rust-thermometer", "localhost", 1883);
+    mqttoptions.set_keep_alive(Duration::from_secs(5));
+    let (mut client, mut connection) = Client::new(mqttoptions, 10);
 
-    for tick in 0.. {
-        let dur = Duration::from_secs_f32(args.send_duration);
-        println!("{}", thermometer.get(args.send_duration * (tick as f32)));
-        thread::sleep(dur);
+    thread::spawn(move || {
+        let mut thermometer = Thermometer {
+            base_temperature: args.base_temperature,
+            amplitude: args.amplitude,
+            period: args.period,
+            max_measurement_error: args.max_measurement_error,
+            rng: rand::thread_rng(),
+        };
+
+        for tick in 0.. {
+            let dur = Duration::from_secs_f32(args.send_duration);
+
+            let temperature_record = TemperatureRecord {
+                timestamp: DateTime::<Utc>::from(SystemTime::now()).to_rfc3339(),
+                temperature: thermometer.get(args.send_duration * (tick as f32)),
+            };
+            let json = serde_json::to_string(&temperature_record).unwrap();
+
+            client
+                .publish(
+                    &args.topic,
+                    QoS::AtLeastOnce,
+                    false,
+                    json.clone(),
+                )
+                .unwrap();
+            println!("{}", json);
+
+            thread::sleep(dur);
+        }
+    });
+
+    for (_i, notification) in connection.iter().enumerate() {
+        println!("Notification = {:?}", notification);
     }
 }
