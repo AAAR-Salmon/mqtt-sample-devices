@@ -1,5 +1,6 @@
 use std::{f32::consts::PI, thread, time::Duration};
 
+use clap::Parser;
 use rand::{self, Rng};
 
 struct Thermometer<T>
@@ -24,18 +25,42 @@ where
     }
 }
 
+#[derive(Parser)]
+#[command(author, version, about)]
+struct Args {
+    #[arg(help = "broker address (like `mqtt.example.com:1883`)")]
+    broker: String,
+
+    #[arg(short, long, default_value_t = 1.0)]
+    send_duration: f32,
+
+    #[arg(long, default_value_t = 24.0)]
+    base_temperature: f32,
+
+    #[arg(long, default_value_t = 6.0)]
+    amplitude: f32,
+
+    #[arg(long, default_value_t = 120.0)]
+    period: f32,
+
+    #[arg(long, default_value_t = 0.6)]
+    max_measurement_error: f32,
+}
+
 fn main() {
+    let args = Args::parse();
+
     let mut thermometer = Thermometer {
-        base_temperature: 24.0,
-        amplitude: 6.0,
-        period: 120.0,
-        max_measurement_error: 0.6,
+        base_temperature: args.base_temperature,
+        amplitude: args.amplitude,
+        period: args.period,
+        max_measurement_error: args.max_measurement_error,
         rng: rand::thread_rng(),
     };
 
-    for i in 0.. {
-        let dur = Duration::from_secs_f32(1.0);
-        println!("{}", thermometer.get(dur.as_secs_f32() * (i as f32)));
+    for tick in 0.. {
+        let dur = Duration::from_secs_f32(args.send_duration);
+        println!("{}", thermometer.get(args.send_duration * (tick as f32)));
         thread::sleep(dur);
     }
 }
