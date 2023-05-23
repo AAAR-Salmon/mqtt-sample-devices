@@ -70,7 +70,7 @@ struct Args {
 fn main() {
     let args = Args::parse();
 
-    let mut mqttoptions = MqttOptions::new("rust-thermometer", "localhost", 1883);
+    let mut mqttoptions = MqttOptions::new("rust-thermometer", args.hostname, args.port);
     mqttoptions.set_keep_alive(Duration::from_secs(5));
     let (mut client, mut connection) = Client::new(mqttoptions, 10);
 
@@ -90,23 +90,33 @@ fn main() {
                 timestamp: DateTime::<Utc>::from(SystemTime::now()).to_rfc3339(),
                 temperature: thermometer.get(args.send_duration * (tick as f32)),
             };
-            let json = serde_json::to_string(&temperature_record).unwrap();
+            let json = match serde_json::to_string(&temperature_record) {
+                Ok(json) => json,
+                Err(_) => {
+                    thread::sleep(dur);
+                    continue;
+                },
+            };
 
-            client
+            let res_pub = client
                 .publish(
                     &args.topic,
                     QoS::AtLeastOnce,
                     false,
                     json.clone(),
-                )
-                .unwrap();
+                );
+            if let Err(err) = res_pub {
+                println!("{}", err);
+                thread::sleep(dur);
+                continue;
+            };
             println!("{}", json);
 
             thread::sleep(dur);
         }
     });
 
-    for (_i, notification) in connection.iter().enumerate() {
+    for notification in connection.iter(){
         println!("Notification = {:?}", notification);
     }
 }
