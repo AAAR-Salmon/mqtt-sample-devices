@@ -6,6 +6,12 @@ MQTT メッセージを発する温度センサのシミュレータ
 
 Docker がインストールされている必要がある．
 
+まず，イメージをビルドする．
+
+```sh
+docker build -t thermometer:latest https://github.com/AAAR-Salmon/mqtt-sample-devices.git#main:thermometer
+```
+
 接続先の MQTT ブローカが `<host>:<port>` であるとき，
 トピック `<topic>` に Publish するには次のコマンドを実行する．
 ```sh
